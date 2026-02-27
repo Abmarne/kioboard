@@ -182,6 +182,8 @@ class Kioboard {
      * @param {boolean} options.isPermanent=false Never hide kioboard
      * @param {boolean} options.isScroll=true Scroll input into view when focused
      * @param {boolean} options.isOSK=false Allow OS's default on-screen-keyboard
+     * @param {boolean} options.soundEnabled=false Enable typing sound
+     * @param {string} options.soundSrc=undefined Custom audio file URL for typing sound
      * @param {Object} options.scrollOptions https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView
      * @param {number} options.shiftState Shift states: 0=Off 1=On 2=Caps-lock. When 0 the "default" layer will be used
      * @param {string} options.key The last pressed key 
@@ -238,6 +240,8 @@ class Kioboard {
         this.isPermanent = false;
         this.isScroll = true;
         this.isOSK = false;
+        this.soundEnabled = false;
+        this.soundSrc = "default";
         this.scrollOptions = { behavior: "smooth", block: "start", inline: "nearest" };
         this.shiftState = 0;
         this.key = "";
@@ -464,6 +468,73 @@ class Kioboard {
     }
 
     /**
+     * Play typing sound if enabled
+     * @returns {void}
+     */
+    playSound() {
+        if (!this.soundEnabled) return;
+        
+        if (this.soundSrc === "default" || !this.soundSrc) {
+            this.playDefaultSound();
+            return;
+        }
+        
+        if (!this.soundAudio) {
+            this.soundAudio = new Audio(this.soundSrc);
+        }
+        
+        this.soundAudio.currentTime = 0;
+        this.soundAudio.play().catch(() => {});
+    }
+
+    /**
+     * Play default click sound using Web Audio API
+     * @returns {void}
+     */
+    playDefaultSound() {
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = "sine";
+        
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.05);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.05);
+    }
+
+    /**
+     * Set typing sound options
+     * @param {boolean} enabled Enable or disable typing sound
+     * @param {string=} src Optional custom audio file URL, or "default" for built-in sound
+     * @returns {Kioboard}
+     * @example
+     * ```js
+     * kio.setSound(true); // Enable with default built-in sound
+     * kio.setSound(true, "default"); // Same as above
+     * kio.setSound(true, "/path/to/click.mp3"); // Enable with custom sound
+     * kio.setSound(false); // Disable
+     * ```
+     */
+    setSound(enabled, src = "default") {
+        this.soundEnabled = enabled;
+        if (src) {
+            this.soundSrc = src;
+            this.soundAudio = new Audio(src);
+        }
+        return this;
+    }
+
+    /**
      * Trigger specific key-name action/s
      * If a key-action exists it will trigger that action
      * otherwise the key-name will be inserted at caret position
@@ -513,6 +584,8 @@ class Kioboard {
                     elKey.classList.add("is-active");
                 });
             });
+
+            this.playSound();
 
             this.input?.dispatchEvent(new Event("input", {
                 bubbles: true,
